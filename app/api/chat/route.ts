@@ -17,7 +17,10 @@ const ENFORCE_CREDITS = true;
 export async function POST(req: NextRequest) {
   try {
     console.log('Chat API endpoint called');
-
+    
+    // Debug request headers
+    console.log('Cookie header present:', req.headers.has('cookie') ? 'Yes' : 'No');
+    
     // Initialize OpenAI client with project API key
     const openai = new OpenAI({
       apiKey: openaiApiKey,
@@ -156,7 +159,7 @@ export async function POST(req: NextRequest) {
       error: string | null;
     } = { success: true, remainingCredits: 0, error: null };
     
-    if (userForCredits && ENFORCE_CREDITS) {
+    if (userForCredits) {
       console.log(`Attempting to deduct credits for user ${userForCredits.id}`);
       deductionResult = await deductCreditsForMessage(userForCredits);
       
@@ -167,8 +170,6 @@ export async function POST(req: NextRequest) {
         // Still return the AI response even if credit deduction failed
         // But log the error so we can investigate
       }
-    } else {
-      console.log(`Skipping credit deduction: user=${!!userForCredits}, enforce=${ENFORCE_CREDITS}`);
     }
     
     // Return successful response with AI message and credit info
@@ -190,4 +191,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-} 
+}

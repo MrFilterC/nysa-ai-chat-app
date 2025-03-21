@@ -347,4 +347,4 @@ export const sendMessageToAPI = async (messages: Pick<Message, 'role' | 'content
       error: error.message || 'Failed to get response from API' 
     };
   }
-}; 
+};

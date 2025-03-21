@@ -63,8 +63,7 @@ export const supabase = createClient(
         }
       }
     }
-  }
-);
+  });
 
 // Set up a global event listener for authentication changes
 if (typeof window !== 'undefined') {
@@ -154,4 +153,4 @@ export const handleSupabaseError = (error: any) => {
   } else {
     return error.message || 'An unexpected error occurred';
   }
-}; 
+};
