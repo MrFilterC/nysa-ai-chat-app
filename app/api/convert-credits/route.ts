@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { burnTokens, restoreWalletFromPrivateKey } from '../../lib/wallet';
-import { supabase as clientSupabase, getCurrentSession } from '../../lib/supabase';
-
-// For development, we can bypass authentication checks
-const SKIP_AUTH = true; // Geçici olarak TRUE olarak ayarlandı - oturum sorunları düzeltilince FALSE yapılmalı!
+import { supabase as clientSupabase, getCurrentSession, getAuthToken } from '../../lib/supabase';
 
 // Helper function to create a standard API response with proper headers
 function createApiResponse(data: any, status = 200) {
@@ -28,40 +25,69 @@ export async function OPTIONS() {
 export async function POST(req: NextRequest) {
   try {
     console.log('Convert-credits API endpoint called');
-    console.log('Auth mode:', SKIP_AUTH ? 'AUTH BYPASSED (TEMPORARY FIX)' : 'AUTH REQUIRED');
     
     // Debug request details
-    console.log('Request headers:', Object.fromEntries([...req.headers.entries()]
-      .filter(([key]) => !key.includes('sec-') && !key.includes('cookie'))));
-    console.log('Cookie header present:', req.headers.has('cookie'));
+    console.log('Cookie header present:', req.headers.has('cookie') ? 'Yes' : 'No');
+    console.log('Authorization header present:', req.headers.has('authorization') ? 'Yes' : 'No');
     
-    // Try to get session using client lib directly first
-    let userId = null; // Start with null, we'll require a valid session
+    // Try to get session using route handler client
+    let userId = null;
     let userIdForCredit = null;
     
     const cookieStore = cookies();
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
-    let session;
+    let session = null;
     
     try {
-      // Get session from route handler
+      // Method 1: Get session from route handler
       const { data, error } = await supabase.auth.getSession();
-      session = data.session;
       
-      if (session) {
+      if (error) {
+        console.error('Error getting session from route handler:', error);
+      } else if (data.session) {
+        session = data.session;
         userId = session.user.id;
         userIdForCredit = userId;
-        console.log('Session found via createRouteHandlerClient:', userId);
+        console.log('Session found via route handler for user:', userId);
       } else {
-        console.log('No session found via createRouteHandlerClient');
+        console.log('No session found via route handler');
+      }
+      
+      // Method 2: If no session from route handler, try the Authorization header
+      if (!session) {
+        const authHeader = req.headers.get('Authorization');
         
-        // Try getting session via client library as fallback
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          try {
+            const token = authHeader.split(' ')[1];
+            console.log('Authorization header found, verifying token...');
+            
+            const { data: { user }, error } = await supabase.auth.getUser(token);
+            
+            if (!error && user) {
+              userId = user.id;
+              userIdForCredit = userId;
+              console.log('Auth session found via Authorization header for user:', userId);
+            } else {
+              console.error('Invalid token in Authorization header:', error);
+            }
+          } catch (e) {
+            console.error('Error processing Authorization header:', e);
+          }
+        } else {
+          console.log('No Authorization header found');
+        }
+      }
+      
+      // Method 3: Try client library as last resort
+      if (!userId) {
+        console.log('Trying to get session via client library...');
         const clientSession = await getCurrentSession();
         if (clientSession) {
           userId = clientSession.user.id;
           userIdForCredit = userId;
           session = clientSession;
-          console.log('Session found via client library:', userId);
+          console.log('Session found via client library for user:', userId);
         } else {
           console.log('No session found via client library either');
         }
@@ -70,17 +96,10 @@ export async function POST(req: NextRequest) {
       console.error('Error getting session:', sessionError);
     }
     
-    // Check authentication - only if we're enforcing auth
-    if (!userId && !SKIP_AUTH) {
-      console.error('Authentication failed: No session found');
+    // If we still don't have a user ID, reject the request
+    if (!userId) {
+      console.error('Authentication failed: No valid session or token found');
       return createApiResponse({ error: 'Not authenticated' }, 401);
-    }
-    
-    // For development or when authentication is bypassed
-    if (!userId && SKIP_AUTH) {
-      console.log('Authentication bypassed - using dev user');
-      userId = 'dev-user';
-      userIdForCredit = userId;
     }
     
     // Parse request body
