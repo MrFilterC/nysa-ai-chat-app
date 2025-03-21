@@ -3,6 +3,19 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { burnTokens, restoreWalletFromPrivateKey } from '../../lib/wallet';
 import { supabase as clientSupabase, getCurrentSession, getAuthToken } from '../../lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+// Admin/server client with service_role for bypassing RLS
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    }
+  }
+);
 
 // Helper function to create a standard API response with proper headers
 function createApiResponse(data: any, status = 200) {
@@ -148,8 +161,8 @@ export async function POST(req: NextRequest) {
       console.log('Attempting to update credits for user ID:', userIdForCredit);
       console.log('Credit amount to add:', creditAmount);
       
-      // Update credits in the database
-      const { data: updateResult, error: updateError } = await supabase
+      // Use admin client to bypass RLS
+      const { data: updateResult, error: updateError } = await supabaseAdmin
         .from('profiles')
         .select('credits')
         .eq('id', userIdForCredit)
@@ -170,8 +183,8 @@ export async function POST(req: NextRequest) {
       console.log('Current credits:', currentCredits);
       console.log('New credits after update:', newCredits);
       
-      // Update the profile with new credits
-      const { data: updateData, error: creditUpdateError } = await supabase
+      // Update the profile with new credits using admin client
+      const { data: updateData, error: creditUpdateError } = await supabaseAdmin
         .from('profiles')
         .update({ credits: newCredits.toString() })
         .eq('id', userIdForCredit)
@@ -187,8 +200,8 @@ export async function POST(req: NextRequest) {
       
       console.log('Credit update result:', updateData);
       
-      // Log the credit transaction
-      const { error: logError } = await supabase
+      // Log the credit transaction using admin client
+      const { error: logError } = await supabaseAdmin
         .from('credit_logs')
         .insert({
           user_id: userIdForCredit,
