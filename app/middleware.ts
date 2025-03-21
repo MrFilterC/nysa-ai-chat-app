@@ -1,58 +1,58 @@
 import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
 export async function middleware(req: NextRequest) {
-  // Create a response object
   const res = NextResponse.next();
-  
-  // Log the request details
-  const url = req.nextUrl.pathname;
-  const method = req.method;
-  console.log(`Middleware processing ${method} request to ${url}`);
-  
-  // Debug headers
-  console.log("Cookies present:", req.headers.has('cookie') ? 'Yes' : 'No');
-  
-  // Create a Supabase client with the middleware configuration
   const supabase = createMiddlewareClient({ req, res });
   
-  // Refresh the session to ensure it's valid
-  const { data: { session }, error } = await supabase.auth.getSession();
+  console.log('Middleware processing request for path:', req.nextUrl.pathname);
   
-  // Check if this is an API request
-  const isApiRequest = url.startsWith('/api/');
-  
-  // Special handling for token conversion API
-  const isConvertCreditsRequest = url === '/api/convert-credits';
-  
-  if (error) {
-    console.error('Middleware auth error:', error.message);
-  } else {
-    console.log('Middleware session check:', session ? `Active session (${session.user.id})` : 'No session', 
-      'for path:', url);
-  }
-  
-  // For protected dashboard routes, redirect to login if no session
-  // Temporarily bypass auth check for the convert-credits endpoint
-  if (!session && 
-    (url.startsWith('/dashboard') || 
-    (isApiRequest && !url.startsWith('/api/auth') && !isConvertCreditsRequest))) {
-    console.log('Middleware: Protected route accessed without session, will handle accordingly');
+  try {
+    // Refresh session if needed
+    const { data: { session }, error } = await supabase.auth.getSession();
     
-    // For API routes, we don't redirect but let the API handler return 401
-    if (!isApiRequest) {
+    if (error) {
+      console.error('Error in auth middleware:', error.message);
+    }
+    
+    // Log auth status for debugging (path and session presence)
+    console.log(`Auth middleware path: ${req.nextUrl.pathname} - Session exists: ${!!session}`);
+    
+    // If we're on an authenticated route and no session, redirect to login
+    const authenticatedRoutes = ['/dashboard', '/profile', '/chat'];
+    const isAuthRoute = authenticatedRoutes.some(route => 
+      req.nextUrl.pathname.startsWith(route)
+    );
+    
+    if (isAuthRoute && !session) {
+      console.log('Redirecting unauthenticated user to login from', req.nextUrl.pathname);
+      
+      // Store the original URL to redirect back after login
       const redirectUrl = new URL('/login', req.url);
+      redirectUrl.searchParams.set('redirectTo', req.nextUrl.pathname);
+      
       return NextResponse.redirect(redirectUrl);
     }
+    
+    // If we're on login/register and have session, redirect to dashboard
+    const authPages = ['/login', '/register'];
+    const isAuthPage = authPages.some(page => req.nextUrl.pathname === page);
+    
+    if (isAuthPage && session) {
+      console.log('Redirecting authenticated user to dashboard from', req.nextUrl.pathname);
+      return NextResponse.redirect(new URL('/dashboard', req.url));
+    }
+  } catch (e) {
+    console.error('Middleware exception:', e);
   }
   
   return res;
 }
 
-// Match all routes including API routes but exclude static assets
+// Match all routes except static files and api routes
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico).*)',
-    '/api/:path*',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
-}; 
+};
