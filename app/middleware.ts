@@ -1,61 +1,68 @@
 import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 import { NextRequest, NextResponse } from 'next/server';
 
-// Acil durumlar için API doğrulama kontrolleri devre dışı
-const BYPASS_API_AUTH = true; // Geçici çözüm - normale dönünce FALSE yapılmalı
-
 export async function middleware(req: NextRequest) {
-  // Create a response object
-  const res = NextResponse.next();
-  
-  // Log the request details
-  const url = req.nextUrl.pathname;
-  const method = req.method;
-  console.log(`Middleware processing ${method} request to ${url}`);
-  
-  // Debug headers
-  console.log("Cookies present:", req.headers.has('cookie') ? 'Yes' : 'No');
-  
-  // Create a Supabase client with the middleware configuration
-  const supabase = createMiddlewareClient({ req, res });
-  
   try {
+    // Create a response object
+    const res = NextResponse.next();
+    
+    // Log the request details
+    const url = req.nextUrl.pathname;
+    const method = req.method;
+    console.log(`Middleware processing ${method} request to ${url}`);
+    
+    // Debug headers
+    const hasCookie = req.headers.has('cookie');
+    console.log("Cookies present:", hasCookie ? 'Yes' : 'No');
+    
+    // Log authorization header (if exists) without exposing the actual token
+    const hasAuthHeader = req.headers.has('authorization');
+    console.log("Authorization header present:", hasAuthHeader ? 'Yes' : 'No');
+    
+    // Create a Supabase client with the middleware configuration
+    const supabase = createMiddlewareClient({ req, res });
+    
     // Refresh the session to ensure it's valid
     const { data: { session }, error } = await supabase.auth.getSession();
     
     // Check if this is an API request
     const isApiRequest = url.startsWith('/api/');
+    const isAuthRequest = url.startsWith('/api/auth');
     
     if (error) {
       console.error('Middleware auth error:', error.message);
     } else {
-      console.log('Middleware session check:', session ? `Active session (${session.user.id})` : 'No session', 
-        'for path:', url);
+      console.log(
+        'Middleware session check:', 
+        session ? `Active session (${session.user.id})` : 'No session', 
+        'for path:', url
+      );
     }
     
-    // Geçici çözüm: API istekleri için doğrulama kontrolünü atla
-    if (isApiRequest && BYPASS_API_AUTH) {
-      console.log('API request auth check bypassed due to BYPASS_API_AUTH setting');
-      // API isteklerini doğrulama yapmadan geçir
-      return res;
+    // Set auth info in headers for downstream processing
+    if (session) {
+      res.headers.set('X-User-Id', session.user.id);
+      res.headers.set('X-Auth-Status', 'authenticated');
+    } else {
+      res.headers.set('X-Auth-Status', 'unauthenticated');
     }
     
     // For protected dashboard routes, redirect to login if no session
-    if (!session && 
-      (url.startsWith('/dashboard') || 
-      (isApiRequest && !url.startsWith('/api/auth')))) {
-      console.log('Middleware: Protected route accessed without session, handling accordingly');
+    if (!session && url.startsWith('/dashboard')) {
+      console.log('Middleware: Protected dashboard route accessed without session, redirecting to login');
       
-      // For API routes, let the API handler return 401 (API rotaları için doğrulama rotanın kendisinde yapılacak)
-      if (isApiRequest) {
-        return res;
-      }
-      
-      // For browser routes, redirect to login
+      // For browser routes, redirect to login with return path
       const redirectUrl = new URL('/login', req.url);
       // Store the original URL to redirect back after login
       redirectUrl.searchParams.set('redirectTo', req.nextUrl.pathname);
       return NextResponse.redirect(redirectUrl);
+    }
+    
+    // For API routes other than auth routes, let the API route handle authentication
+    // We pass the request through but with auth status headers set
+    if (isApiRequest && !isAuthRequest) {
+      console.log(`API request to ${url}, forwarding with auth status headers`);
+      return res;
     }
     
     // If we're on login/register and have session, redirect to dashboard
@@ -63,17 +70,19 @@ export async function middleware(req: NextRequest) {
     const isAuthPage = authPages.some(page => url === page);
     
     if (isAuthPage && session) {
-      console.log('Middleware: Auth page accessed with session, redirecting to dashboard');
+      console.log('Middleware: Auth page accessed with valid session, redirecting to dashboard');
       return NextResponse.redirect(new URL('/dashboard', req.url));
     }
+    
+    return res;
   } catch (e) {
     console.error('Middleware exception:', e);
+    // In case of error, continue the request to avoid blocking the user
+    return NextResponse.next();
   }
-  
-  return res;
 }
 
-// Match all routes except static files and api routes
+// Match all routes except static files
 export const config = {
   matcher: [
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
