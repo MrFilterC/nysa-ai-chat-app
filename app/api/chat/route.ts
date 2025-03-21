@@ -8,7 +8,7 @@ import { checkUserCredits, deductCreditsForMessage, MESSAGE_CREDIT_COST } from '
 const openaiApiKey = process.env.OPENAI_API_KEY;
 
 // Allow responses without authentication during development
-const SKIP_AUTH = true;
+const SKIP_AUTH = false;
 
 // Should we enforce credit checking? Set to false for development if needed
 const ENFORCE_CREDITS = true;
@@ -65,17 +65,6 @@ export async function POST(req: NextRequest) {
     if (!userForCredits && SKIP_AUTH) {
       console.log('Using development user for credit operations');
       userForCredits = { id: 'dev-user' };
-      
-      // Attempt to find a real user from the database for dev purposes
-      try {
-        const { data: devUser } = await supabase.from('profiles').select('id').limit(1).single();
-        if (devUser) {
-          console.log('Found real user for development:', devUser.id);
-          userForCredits = { id: devUser.id };
-        }
-      } catch (error) {
-        console.warn('Could not find a real user, using dev-user');
-      }
     }
     
     // Log the user object we're using for better debugging
