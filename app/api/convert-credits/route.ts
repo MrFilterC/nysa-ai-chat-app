@@ -145,6 +145,9 @@ export async function POST(req: NextRequest) {
       // Update user credits in database
       const creditAmount = Number(amount) * 10; // Each token is worth 10 credits
       
+      console.log('Attempting to update credits for user ID:', userIdForCredit);
+      console.log('Credit amount to add:', creditAmount);
+      
       // Update credits in the database
       const { data: updateResult, error: updateError } = await supabase
         .from('profiles')
@@ -164,11 +167,15 @@ export async function POST(req: NextRequest) {
       const currentCredits = Number(updateResult.credits) || 0;
       const newCredits = currentCredits + creditAmount;
       
+      console.log('Current credits:', currentCredits);
+      console.log('New credits after update:', newCredits);
+      
       // Update the profile with new credits
-      const { error: creditUpdateError } = await supabase
+      const { data: updateData, error: creditUpdateError } = await supabase
         .from('profiles')
         .update({ credits: newCredits })
-        .eq('id', userIdForCredit);
+        .eq('id', userIdForCredit)
+        .select();
       
       if (creditUpdateError) {
         console.error('Error updating credits:', creditUpdateError);
@@ -177,6 +184,8 @@ export async function POST(req: NextRequest) {
           txHash: burnResult.signature  // Still return transaction hash
         }, 500);
       }
+      
+      console.log('Credit update result:', updateData);
       
       // Log the credit transaction
       const { error: logError } = await supabase
