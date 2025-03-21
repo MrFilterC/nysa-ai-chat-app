@@ -1,0 +1,5 @@
+{
+  "name": "nysa-ai-chat-app",
+  "version": 2,
+  "buildCommand": "npm run build"
+} 
