@@ -13,22 +13,53 @@ export const supabase = createClient(
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
+      // Improved storage handling to ensure reliable auth across browser environments
       storage: {
         getItem: (key) => {
-          if (typeof window !== 'undefined') {
-            return window.localStorage.getItem(key);
+          if (typeof window === 'undefined') {
+            return null;
           }
+          
+          // Try localStorage first (this is the default)
+          const fromLocalStorage = window.localStorage.getItem(key);
+          if (fromLocalStorage) {
+            console.log(`Auth token retrieved from localStorage for key: ${key.substring(0, 10)}...`);
+            return fromLocalStorage;
+          }
+          
+          // Fallback to sessionStorage
+          const fromSessionStorage = window.sessionStorage.getItem(key);
+          if (fromSessionStorage) {
+            console.log(`Auth token retrieved from sessionStorage for key: ${key.substring(0, 10)}...`);
+            return fromSessionStorage;
+          }
+          
+          console.warn(`No auth token found for key: ${key.substring(0, 10)}...`);
           return null;
         },
         setItem: (key, value) => {
-          if (typeof window !== 'undefined') {
+          if (typeof window === 'undefined') {
+            return;
+          }
+          
+          try {
+            // Try to store in both localStorage and sessionStorage for redundancy
             window.localStorage.setItem(key, value);
+            window.sessionStorage.setItem(key, value);
+            console.log(`Auth token stored for key: ${key.substring(0, 10)}...`);
+          } catch (error) {
+            console.error('Error storing auth token:', error);
           }
         },
         removeItem: (key) => {
-          if (typeof window !== 'undefined') {
-            window.localStorage.removeItem(key);
+          if (typeof window === 'undefined') {
+            return;
           }
+          
+          // Clear from both storage locations
+          window.localStorage.removeItem(key);
+          window.sessionStorage.removeItem(key);
+          console.log(`Auth token removed for key: ${key.substring(0, 10)}...`);
         }
       }
     }
@@ -71,4 +102,4 @@ export const handleSupabaseError = (error: any) => {
   } else {
     return error.message || 'An unexpected error occurred';
   }
-}; 
+};
