@@ -331,7 +331,7 @@ export default function WalletSection({ user }: WalletSectionProps) {
 
   // Add convert tokens function
   const handleConvertTokens = async () => {
-    if (!privateKey || !convertAmount) return;
+    if (!privateKey || !convertAmount || !publicKey) return;
     
     setConverting(true);
     setConvertError(null);
@@ -360,10 +360,12 @@ export default function WalletSection({ user }: WalletSectionProps) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.data.session?.access_token || ''}`,
         },
         body: JSON.stringify({
           amount,
           privateKey,
+          walletAddress: publicKey,
         }),
         // Include credentials and specify SameSite attribute
         credentials: 'include',
