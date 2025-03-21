@@ -3,25 +3,18 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import OpenAI from 'openai';
 import { checkUserCredits, deductCreditsForMessage, MESSAGE_CREDIT_COST } from '../../lib/chatService';
+import { getAuthToken } from '../../lib/supabase';
 
 // API key from environment variable
 const openaiApiKey = process.env.OPENAI_API_KEY;
 
-// !!! TEMPORARY FIX !!! - Bypass authentication for production deployment
-// Bu değer normalde FALSE olmalı, ancak şu an oturum yönetimi sorunları nedeniyle geçici olarak TRUE
-const SKIP_AUTH = true;
-
-// Should we enforce credit checking? Set to false for development if needed
-const ENFORCE_CREDITS = true;
-
 export async function POST(req: NextRequest) {
   try {
     console.log('Chat API endpoint called');
-    console.log('Auth mode:', SKIP_AUTH ? 'AUTH BYPASSED (TEMPORARY FIX)' : 'AUTH REQUIRED');
-    console.log('Request headers:', Object.fromEntries([...req.headers.entries()]
-      .filter(([key]) => !key.includes('sec-') && !key.includes('cookie'))));
-    console.log('Cookie header present:', req.headers.has('cookie'));
-
+    
+    // Debug request headers
+    console.log('Cookie header present:', req.headers.has('cookie') ? 'Yes' : 'No');
+    
     // Initialize OpenAI client with project API key
     const openai = new OpenAI({
       apiKey: openaiApiKey,
@@ -33,36 +26,58 @@ export async function POST(req: NextRequest) {
       cookies: () => cookieStore 
     });
     
-    // Try to get the user session
+    // Step 1: Try to get the session from the route handler client
     let session = null;
     let userId = null;
     let userForCredits = null;
     
     try {
-      // Get the user session
+      // Get the user session using the route handler client
       const { data, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError) {
-        console.error('Session error:', sessionError);
+        console.error('Session error from route handler client:', sessionError);
       } else if (data.session) {
         session = data.session;
         userId = session.user.id;
         userForCredits = session.user;
-        console.log('Auth session found for user:', userId);
+        console.log('Auth session found via route handler client for user:', userId);
       } else {
-        console.log('No session found');
+        console.log('No session found via route handler client');
       }
     } catch (e) {
-      console.error('Exception getting session:', e);
+      console.error('Exception getting session from route handler:', e);
     }
     
-    // For development or when authentication is bypassed
-    if (!session && SKIP_AUTH) {
-      console.log('Authentication bypassed due to SKIP_AUTH setting');
-      userId = 'dev-user';
-      userForCredits = { id: 'dev-user' };
-    } else if (!session && !SKIP_AUTH) {
-      console.error('Authentication failed: No session found');
+    // If no session was found through the route handler client, try the Authorization header
+    if (!session) {
+      const authHeader = req.headers.get('Authorization');
+      
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const token = authHeader.split(' ')[1];
+          console.log('Authorization header found, verifying token...');
+          
+          const { data: { user }, error } = await supabase.auth.getUser(token);
+          
+          if (!error && user) {
+            userId = user.id;
+            userForCredits = user;
+            console.log('Auth session found via Authorization header for user:', userId);
+          } else {
+            console.error('Invalid token in Authorization header:', error);
+          }
+        } catch (e) {
+          console.error('Error processing Authorization header:', e);
+        }
+      } else {
+        console.log('No Authorization header found');
+      }
+    }
+    
+    // If still no session, reject the request
+    if (!userId) {
+      console.error('Authentication failed: No valid session or token found');
       return NextResponse.json(
         { error: 'Not authenticated' },
         { status: 401 }
@@ -72,8 +87,8 @@ export async function POST(req: NextRequest) {
     // Log the user object we're using
     console.log('User ID for this request:', userId);
     
-    // Check user credits if we're enforcing credit checks (skip for dev-user)
-    if (userForCredits && ENFORCE_CREDITS && userForCredits.id !== 'dev-user') {
+    // Check user credits
+    if (userForCredits) {
       console.log(`Checking credits for user ${userForCredits.id}`);
       const { hasSufficientCredits, credits, error: creditError } = await checkUserCredits(userForCredits);
       
@@ -127,7 +142,7 @@ export async function POST(req: NextRequest) {
       error: string | null;
     } = { success: true, remainingCredits: 0, error: null };
     
-    if (userForCredits && ENFORCE_CREDITS && userForCredits.id !== 'dev-user') {
+    if (userForCredits) {
       console.log(`Attempting to deduct credits for user ${userForCredits.id}`);
       deductionResult = await deductCreditsForMessage(userForCredits);
       
@@ -138,8 +153,6 @@ export async function POST(req: NextRequest) {
         // Still return the AI response even if credit deduction failed
         // But log the error so we can investigate
       }
-    } else {
-      console.log(`Skipping credit deduction: user=${userForCredits?.id || 'none'}, dev-mode or credits not enforced`);
     }
     
     // Return successful response with AI message and credit info
