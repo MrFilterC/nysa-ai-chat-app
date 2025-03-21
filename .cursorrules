@@ -1,0 +1,57 @@
+# Nysa's World Project Rules
+
+## Project Overview
+- App is an AI agent called Nysa that users can interact with
+- All app content must be in English
+
+## Development Guidelines
+- Main pages: Home (welcome), Login, Register, Dashboard, Chat, Profile
+- UI should use dark theme with blue accents
+- Using Next.js with App Router
+- Styled with Tailwind CSS
+- TypeScript for type safety
+
+## Authentication - Supabase
+- Authentication handled via Supabase Auth
+- Required .env.local variables:
+  - NEXT_PUBLIC_SUPABASE_URL
+  - NEXT_PUBLIC_SUPABASE_ANON_KEY
+  - OPENAI_API_KEY
+- User metadata includes 'username' field
+- Email verification is required
+- Routes: /login, /register, /verification, /dashboard
+
+## Database Structure
+- profiles table: id, username, full_name, avatar_url, created_at, updated_at
+- chat_sessions table: id, user_id, title, messages (jsonb), created_at, updated_at
+- Row Level Security policies implemented for data protection
+
+## Implemented Features
+- Authentication system with Supabase
+- User profiles with editing capabilities
+- Chat interface with typing animations
+- Multiple chat sessions management
+- Real-time interaction with OpenAI API
+- Responsive design for all devices
+
+## Development Rules
+- All code should follow TypeScript best practices
+- Components should be modular and reusable
+- API keys must be stored in environment variables
+- No hardcoded credentials in the codebase
+- Chat messages should be properly sanitized
+- UI must be responsive and accessible
+
+## Future Enhancements
+- File and image uploads
+- Voice messaging capabilities
+- User preferences and settings
+- Advanced AI features (image generation, etc.)
+- Mobile application version
+- Multi-language support (UI only, chat remains in English)
+
+## Deployment Strategy
+- Vercel for hosting
+- Supabase for backend
+- Environment variables for configuration
+- CI/CD pipeline for automated testing and deployment 
