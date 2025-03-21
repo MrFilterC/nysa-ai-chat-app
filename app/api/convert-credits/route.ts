@@ -7,8 +7,8 @@ import { createClient } from '@supabase/supabase-js';
 
 // Admin/server client with service_role for bypassing RLS
 const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  'https://rbxevkgabanoluykkbls.supabase.co',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJieGV2a2dhYmFub2x1eWtrYmxzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MjUzNzMzNSwiZXhwIjoyMDU4MTEzMzM1fQ.BUzWNg1j7HKGsYwhRRHT1E3mLTmdTbO_Vn6tBlwv4TM',
   {
     auth: {
       autoRefreshToken: false,
