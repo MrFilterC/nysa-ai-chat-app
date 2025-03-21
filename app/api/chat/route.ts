@@ -8,7 +8,7 @@ import { checkUserCredits, deductCreditsForMessage, MESSAGE_CREDIT_COST } from '
 const openaiApiKey = process.env.OPENAI_API_KEY;
 
 // Allow responses without authentication during development
-const SKIP_AUTH = false;
+const SKIP_AUTH = true;
 
 // Should we enforce credit checking? Set to false for development if needed
 const ENFORCE_CREDITS = true;
@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
     // For development: If we're skipping auth and have no user, create a fake user
     if (!userForCredits && SKIP_AUTH) {
       console.log('Using development user for credit operations');
+      // Sabit bir geliştirme kullanıcısı kullan, gerçek kullanıcıları karıştırma
       userForCredits = { id: 'dev-user' };
     }
     
@@ -74,26 +75,32 @@ export async function POST(req: NextRequest) {
     // Check user credits if we're enforcing credit checks
     if (userForCredits && ENFORCE_CREDITS) {
       console.log(`Checking credits for user ${userForCredits.id}`);
-      const { hasSufficientCredits, credits, error: creditError } = await checkUserCredits(userForCredits);
       
-      if (creditError) {
-        console.error('Error checking credits:', creditError);
-        return NextResponse.json(
-          { error: creditError },
-          { status: 400 }
-        );
-      }
-      
-      if (!hasSufficientCredits) {
-        console.error(`Insufficient credits. User has ${credits} credits, but needs ${MESSAGE_CREDIT_COST}`);
-        return NextResponse.json(
-          { 
-            error: `Insufficient credits. You need ${MESSAGE_CREDIT_COST} credits to send a message, but you only have ${credits} credits.`,
-            credits: credits,
-            requiredCredits: MESSAGE_CREDIT_COST
-          },
-          { status: 402 } // 402 Payment Required
-        );
+      // Eğer geliştirme modu ve dev-user kullanıyorsak, kredi kontrolünü atla
+      if (SKIP_AUTH && userForCredits.id === 'dev-user') {
+        console.log('Development mode: Skipping credit check for dev-user');
+      } else {
+        const { hasSufficientCredits, credits, error: creditError } = await checkUserCredits(userForCredits);
+        
+        if (creditError) {
+          console.error('Error checking credits:', creditError);
+          return NextResponse.json(
+            { error: creditError },
+            { status: 400 }
+          );
+        }
+        
+        if (!hasSufficientCredits) {
+          console.error(`Insufficient credits. User has ${credits} credits, but needs ${MESSAGE_CREDIT_COST}`);
+          return NextResponse.json(
+            { 
+              error: `Insufficient credits. You need ${MESSAGE_CREDIT_COST} credits to send a message, but you only have ${credits} credits.`,
+              credits: credits,
+              requiredCredits: MESSAGE_CREDIT_COST
+            },
+            { status: 402 } // 402 Payment Required
+          );
+        }
       }
     }
     
@@ -127,15 +134,20 @@ export async function POST(req: NextRequest) {
     } = { success: true, remainingCredits: 0, error: null };
     
     if (userForCredits && ENFORCE_CREDITS) {
-      console.log(`Attempting to deduct credits for user ${userForCredits.id}`);
-      deductionResult = await deductCreditsForMessage(userForCredits);
-      
-      console.log(`Credit deduction result: success=${deductionResult.success}, remaining=${deductionResult.remainingCredits}`);
-      
-      if (!deductionResult.success) {
-        console.error('Error deducting credits:', deductionResult.error);
-        // Still return the AI response even if credit deduction failed
-        // But log the error so we can investigate
+      // Eğer geliştirme modu ve dev-user kullanıyorsak, kredi düşmeyi atla
+      if (SKIP_AUTH && userForCredits.id === 'dev-user') {
+        console.log('Development mode: Skipping credit deduction for dev-user');
+      } else {
+        console.log(`Attempting to deduct credits for user ${userForCredits.id}`);
+        deductionResult = await deductCreditsForMessage(userForCredits);
+        
+        console.log(`Credit deduction result: success=${deductionResult.success}, remaining=${deductionResult.remainingCredits}`);
+        
+        if (!deductionResult.success) {
+          console.error('Error deducting credits:', deductionResult.error);
+          // Still return the AI response even if credit deduction failed
+          // But log the error so we can investigate
+        }
       }
     } else {
       console.log(`Skipping credit deduction: user=${!!userForCredits}, enforce=${ENFORCE_CREDITS}`);
