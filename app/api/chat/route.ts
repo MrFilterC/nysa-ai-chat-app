@@ -8,7 +8,7 @@ import { checkUserCredits, deductCreditsForMessage, MESSAGE_CREDIT_COST } from '
 const openaiApiKey = process.env.OPENAI_API_KEY;
 
 // Allow responses without authentication during development
-const SKIP_AUTH = true;
+const SKIP_AUTH = false;
 
 // Should we enforce credit checking? Set to false for development if needed
 const ENFORCE_CREDITS = true;
@@ -172,4 +172,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-} 
+}
