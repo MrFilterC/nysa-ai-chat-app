@@ -3,12 +3,13 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import OpenAI from 'openai';
 import { checkUserCredits, deductCreditsForMessage, MESSAGE_CREDIT_COST } from '../../lib/chatService';
+import { getAuthToken } from '../../lib/supabase';
 
 // API key from environment variable
 const openaiApiKey = process.env.OPENAI_API_KEY;
 
 // Allow responses without authentication during development
-const SKIP_AUTH = true;
+const SKIP_AUTH = false;
 
 // Should we enforce credit checking? Set to false for development if needed
 const ENFORCE_CREDITS = true;
@@ -22,65 +23,83 @@ export async function POST(req: NextRequest) {
       apiKey: openaiApiKey,
     });
     
+    // Debug request headers
+    console.log('Cookie header present:', req.headers.has('cookie') ? 'Yes' : 'No');
+    console.log('Authorization header present:', req.headers.has('authorization') ? 'Yes' : 'No');
+    
     // Create a supabase client for each request
     const cookieStore = cookies();
     const supabase = createRouteHandlerClient({ 
       cookies: () => cookieStore 
     });
     
-    // Get the user session
-    const { data, error: sessionError } = await supabase.auth.getSession();
+    // Step 1: Try to get the session from the route handler client
+    let session = null;
+    let userId = null;
+    let userForCredits = null;
     
-    if (sessionError) {
-      console.error('Session error:', sessionError);
-      if (SKIP_AUTH) {
-        console.log('Authentication bypassed due to SKIP_AUTH setting');
+    try {
+      // Get the user session using the route handler client
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('Session error:', sessionError);
+      } else if (data.session) {
+        session = data.session;
+        userId = session.user.id;
+        userForCredits = session.user;
+        console.log('Auth session found via cookies for user:', userId);
       } else {
-        return NextResponse.json(
-          { error: 'Authentication error: ' + sessionError.message },
-          { status: 401 }
-        );
+        console.log('No session found via cookies');
+      }
+    } catch (e) {
+      console.error('Exception getting session from route handler:', e);
+    }
+    
+    // Step 2: If no session found, try the Authorization header
+    if (!session) {
+      const authHeader = req.headers.get('Authorization');
+      
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const token = authHeader.split(' ')[1];
+          console.log('Authorization header found, verifying token...');
+          
+          const { data: { user }, error } = await supabase.auth.getUser(token);
+          
+          if (!error && user) {
+            userId = user.id;
+            userForCredits = user;
+            console.log('Auth session found via Authorization header for user:', userId);
+          } else {
+            console.error('Invalid token in Authorization header:', error);
+          }
+        } catch (e) {
+          console.error('Error processing Authorization header:', e);
+        }
+      } else {
+        console.log('No Authorization header found');
       }
     }
     
-    const session = data.session;
-    
-    // Log authentication attempt for debugging
-    console.log('Auth check result:', session ? 'Session found' : 'No session found');
-    
-    // Check authentication - can be bypassed in development
-    if (!session && !SKIP_AUTH) {
-      console.error('Authentication failed: No session found');
+    // Step 3: If still no session and we're not skipping auth, reject the request
+    if (!userId && !SKIP_AUTH) {
+      console.error('Authentication failed: No valid session or token found');
       return NextResponse.json(
         { error: 'Not authenticated' },
         { status: 401 }
       );
     }
     
-    // Get user ID for database operations
-    const userId = session?.user?.id || 'dev-user';
-    let userForCredits: { id: string } | null = session?.user || null; 
-    
     // For development: If we're skipping auth and have no user, create a fake user
     if (!userForCredits && SKIP_AUTH) {
       console.log('Using development user for credit operations');
+      userId = 'dev-user';
       userForCredits = { id: 'dev-user' };
-      
-      // Attempt to find a real user from the database for dev purposes
-      try {
-        const { data: devUser } = await supabase.from('profiles').select('id').limit(1).single();
-        if (devUser) {
-          console.log('Found real user for development:', devUser.id);
-          userForCredits = { id: devUser.id };
-        }
-      } catch (error) {
-        console.warn('Could not find a real user, using dev-user');
-      }
     }
     
     // Log the user object we're using for better debugging
-    console.log('User object for credit operations:');
-    console.dir(userForCredits, { depth: 3 });
+    console.log('User object for credit operations:', userForCredits ? `ID: ${userForCredits.id}` : 'None');
     
     // Check user credits if we're enforcing credit checks
     if (userForCredits && ENFORCE_CREDITS) {
