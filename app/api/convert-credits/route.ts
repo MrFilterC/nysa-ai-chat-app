@@ -173,7 +173,7 @@ export async function POST(req: NextRequest) {
       // Update the profile with new credits
       const { data: updateData, error: creditUpdateError } = await supabase
         .from('profiles')
-        .update({ credits: newCredits })
+        .update({ credits: newCredits.toString() })
         .eq('id', userIdForCredit)
         .select();
       
