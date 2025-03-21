@@ -1,5 +1,5 @@
 import { ChatSession, Message } from '../types/chat';
-import { supabase } from './supabase';
+import { supabase, getAuthToken } from './supabase';
 import { User } from '@supabase/supabase-js';
 
 // Kredi maliyeti - her mesaj için bu kadar kredi düşülecek
@@ -296,14 +296,27 @@ export const sendMessageToAPI = async (messages: Pick<Message, 'role' | 'content
       console.warn('Auth check failed, but continuing with request:', authError);
     }
     
+    // Get auth token for API call
+    const authToken = getAuthToken();
+    
+    // Set up headers with Authorization if we have a token
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+      console.log('Adding Authorization header with Bearer token');
+    } else {
+      console.warn('No auth token available, proceeding without Authorization header');
+    }
+    
     console.log('Sending message to API with credentials: include');
     
-    // Call API endpoint with credentials included
+    // Call API endpoint with credentials included and Authorization header if available
     const response = await fetch('/api/chat', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       credentials: 'include', // Important for including cookies
       body: JSON.stringify({ messages }),
     });
@@ -334,4 +347,4 @@ export const sendMessageToAPI = async (messages: Pick<Message, 'role' | 'content
       error: error.message || 'Failed to get response from API' 
     };
   }
-}; 
+};
