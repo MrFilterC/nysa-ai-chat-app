@@ -125,14 +125,14 @@ export async function POST(req: NextRequest) {
       const wallet = await restoreWalletFromPrivateKey(privateKey);
       
       // Verify the private key matches the wallet address
-      if (wallet.address.toLowerCase() !== walletAddress.toLowerCase()) {
-        return createApiResponse({ 
-          error: 'Private key does not match the provided wallet address' 
+      if (wallet.publicKey.toString().toLowerCase() !== walletAddress.toLowerCase()) {
+        return createApiResponse({
+          error: 'Private key does not match the provided wallet address'
         }, 400);
       }
       
       // Burn tokens to convert to credits
-      const burnResult = await burnTokens(wallet, amount);
+      const burnResult = await burnTokens(privateKey, amount);
       
       if (!burnResult.success) {
         return createApiResponse({ 
@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
         }, 400);
       }
       
-      console.log('Tokens burned successfully:', burnResult.txHash);
+      console.log('Tokens burned successfully:', burnResult.signature);
       
       // Update user credits in database
       const creditAmount = Number(amount) * 10; // Each token is worth 10 credits
@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
         console.error('Error fetching current credits:', updateError);
         return createApiResponse({ 
           error: 'Failed to fetch current credits: ' + updateError.message,
-          txHash: burnResult.txHash  // Still return transaction hash
+          txHash: burnResult.signature  // Still return transaction hash
         }, 500);
       }
       
@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
         console.error('Error updating credits:', creditUpdateError);
         return createApiResponse({ 
           error: 'Failed to update credits: ' + creditUpdateError.message,
-          txHash: burnResult.txHash  // Still return transaction hash
+          txHash: burnResult.signature  // Still return transaction hash
         }, 500);
       }
       
@@ -185,7 +185,7 @@ export async function POST(req: NextRequest) {
           user_id: userIdForCredit,
           amount: creditAmount,
           type: 'token_conversion',
-          transaction_hash: burnResult.txHash,
+          transaction_hash: burnResult.signature,
           description: `Converted ${amount} NYSA tokens to ${creditAmount} credits`,
           wallet_address: walletAddress
         });
@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
       // Return success response
       return createApiResponse({
         success: true,
-        txHash: burnResult.txHash,
+        txHash: burnResult.signature,
         tokensConverted: Number(amount),
         creditsAdded: creditAmount,
         newCreditBalance: newCredits
